@@ -3,6 +3,15 @@
 /sdk/target
 /program/target
 /deploy
+.env
+node_modules
+recovered.json
+/ts/dist
+/ts/node_modules
+/ts/package-lock.json
+/ts/yarn.lock
+yarn.lock
+/ts/tests
 
 # Configuration files
 .DS_Store
