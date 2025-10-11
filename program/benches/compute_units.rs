@@ -1,5 +1,4 @@
 use doppler::prelude::*;
-use doppler_program::PriceFeed;
 use doppler_sdk::{Oracle, UpdateInstruction};
 use mollusk_svm::{program::keyed_account_for_system_program, Mollusk};
 use mollusk_svm_bencher::MolluskComputeUnitBencher;
@@ -23,7 +22,7 @@ pub fn keyed_account_for_oracle<T: Sized + Copy>(
     payload: T,
 ) -> (Pubkey, Account) {
     let oracle_account = Oracle {
-        sequence: 0,
+        slot: 0,
         payload,
     };
 
@@ -51,11 +50,11 @@ fn main() {
     // Create Mollusk instance
     let mut mollusk = Mollusk::new(&doppler_sdk::ID, "../target/deploy/doppler");
 
-    let (oracle, oracle_account) = keyed_account_for_oracle::<PriceFeed>(
+    let (oracle, oracle_account) = keyed_account_for_oracle::<[u8; 8]>(
         &mut mollusk,
         ADMIN.into(),
         "SOL/USDC",
-        PriceFeed { price: 100_000 },
+        100_000_u64.to_le_bytes(),
     );
 
     // Accounts
@@ -75,9 +74,9 @@ fn main() {
         );
 
     // Update oracle with new values
-    let oracle_update = Oracle::<PriceFeed> {
-        sequence: 1, // Increment sequence from 0 to 1
-        payload: PriceFeed { price: 1_100_000 },
+    let oracle_update = Oracle::<[u8; 8]> {
+        slot: 1, // Increment sequence from 0 to 1
+        payload: 1_100_000_u64.to_le_bytes(),
     };
 
     let price_feed_update_instruction: Instruction = UpdateInstruction {

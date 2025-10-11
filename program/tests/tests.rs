@@ -1,5 +1,4 @@
 use doppler::prelude::*;
-use doppler_program::PriceFeed;
 use doppler_sdk::{Oracle, UpdateInstruction};
 use mollusk_svm::result::Check;
 use mollusk_svm::{program::keyed_account_for_system_program, Mollusk};
@@ -22,7 +21,7 @@ pub fn keyed_account_for_oracle<T: Sized + Copy>(
     payload: T,
 ) -> (Pubkey, Account) {
     let oracle_account = Oracle {
-        sequence: 0,
+        slot: 0,
         payload,
     };
 
@@ -52,11 +51,11 @@ fn test_oracle_update() {
     let mut mollusk = Mollusk::new(&doppler_sdk::ID, "../target/deploy/doppler_program");
     // Accounts
     let (admin, admin_account) = keyed_account_for_admin(ADMIN.into());
-    let (oracle, oracle_account) = keyed_account_for_oracle::<PriceFeed>(
+    let (oracle, oracle_account) = keyed_account_for_oracle::<[u8; 8]>(
         &mut mollusk,
         ADMIN.into(),
         "SOL/USDC",
-        PriceFeed { price: 100_000 },
+        100_000_u64.to_le_bytes(),
     );
     let (system, system_account) = keyed_account_for_system_program();
 
@@ -73,9 +72,9 @@ fn test_oracle_update() {
         );
 
     // Update oracle with new values
-    let oracle_update = Oracle::<PriceFeed> {
-        sequence: 1, // Increment sequence from 0 to 1
-        payload: PriceFeed { price: 1_100_000 },
+    let oracle_update = Oracle::<[u8; 8]> {
+        slot: 1, // Increment sequence from 0 to 1
+        payload: 1_100_000_u64.to_le_bytes(),
     };
 
     let price_feed_update_instruction: Instruction = UpdateInstruction {
@@ -101,8 +100,8 @@ fn test_oracle_update() {
     // Get updated oracle account
     let updated_oracle = result.get_account(&oracle).expect("Missing oracle account");
 
-    let oracle = Oracle::<PriceFeed>::from_bytes(updated_oracle.data());
+    let oracle = Oracle::<[u8; 8]>::from_bytes(updated_oracle.data());
     // Verify the oracle was updated
-    assert_eq!(&oracle.sequence, &1u64, "Sequence should be updated");
-    assert_eq!(&oracle.payload.price, &1_100_000, "Price should be updated");
+    assert_eq!(&oracle.slot, &1u64, "Sequence should be updated");
+    assert_eq!(u64::from_le_bytes(oracle.payload), 1_100_000, "Price should be updated");
 }

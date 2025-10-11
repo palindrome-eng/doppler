@@ -1,20 +1,20 @@
 use solana_instruction::{AccountMeta, Instruction};
 use solana_pubkey::Pubkey;
 
-use crate::constants::{ADMIN_VERIFICATION_CU, ID, PAYLOAD_WRITE_CU, SEQUENCE_CHECK_CU};
+use crate::constants::{ADMIN_VERIFICATION_CU, ID, PAYLOAD_WRITE_CU, SEQUENCE_CHECK_CU as SLOT_CHECK_CU};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct Oracle<T: Sized + Copy> {
-    pub sequence: u64,
+    pub slot: u64,
     pub payload: T,
 }
 
 impl<T: Sized + Copy> Oracle<T> {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(core::mem::size_of::<Self>());
-        // write sequence bytes
-        data.extend_from_slice(&self.sequence.to_le_bytes());
+        // write slot bytes
+        data.extend_from_slice(&self.slot.to_le_bytes());
         // write payload bytes
         data.extend_from_slice(unsafe {
             core::slice::from_raw_parts(
@@ -29,15 +29,15 @@ impl<T: Sized + Copy> Oracle<T> {
     pub fn from_bytes(data: &[u8]) -> Self {
         assert!(data.len() == core::mem::size_of::<Self>());
 
-        // read u64 sequence from first 8 bytes
+        // read u64 slot from first 8 bytes
         let mut seq_bytes = [0u8; 8];
         seq_bytes.copy_from_slice(&data[..8]);
-        let sequence = u64::from_le_bytes(seq_bytes);
+        let slot = u64::from_le_bytes(seq_bytes);
 
         // read payload from remaining bytes
         let payload = unsafe { *data[8..].as_ptr().cast::<T>() };
 
-        Self { sequence, payload }
+        Self { slot, payload }
     }
 }
 
@@ -49,7 +49,7 @@ pub struct UpdateInstruction<T: Sized + Copy> {
 
 impl<T: Sized + Copy> UpdateInstruction<T> {
     pub const fn compute_units(&self) -> u32 {
-        SEQUENCE_CHECK_CU
+        SLOT_CHECK_CU
             + ADMIN_VERIFICATION_CU
             + PAYLOAD_WRITE_CU
             + (core::mem::size_of::<Oracle<T>>() / 4) as u32
@@ -77,7 +77,6 @@ impl<T: Sized + Copy> From<UpdateInstruction<T>> for Instruction {
 
 #[cfg(test)]
 mod tests {
-    use doppler_program::PriceFeed;
     use solana_pubkey::Pubkey;
 
     use super::*;
@@ -100,7 +99,7 @@ mod tests {
     #[test]
     fn test_oracle_to_bytes() {
         let oracle = Oracle {
-            sequence: 42,
+            slot: 42,
             payload: 123u32,
         };
 
@@ -116,7 +115,7 @@ mod tests {
         let oracle_pubkey = Pubkey::new_unique();
 
         let oracle = Oracle {
-            sequence: 1,
+            slot: 1,
             payload: 789u64,
         };
 
@@ -137,8 +136,8 @@ mod tests {
         let oracle_pubkey = Pubkey::new_unique();
 
         let oracle = Oracle {
-            sequence: 1,
-            payload: PriceFeed { price: 1_100_000 },
+            slot: 1,
+            payload: 1_100_000_u64.to_le_bytes(),
         };
 
         let update_instruction = UpdateInstruction {
@@ -158,7 +157,7 @@ mod tests {
         let oracle_pubkey = Pubkey::new_unique();
 
         let oracle = Oracle {
-            sequence: 1,
+            slot: 1,
             payload: PropAMM {
                 bid: 10_500_000,
                 ask: 10_550_000,
@@ -182,7 +181,7 @@ mod tests {
         let oracle_pubkey = Pubkey::new_unique();
 
         let oracle = Oracle {
-            sequence: 1,
+            slot: 1,
             payload: MarketData {
                 price: 45_000_000,
                 volume: 150_000_000,
