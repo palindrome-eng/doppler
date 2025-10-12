@@ -288,9 +288,46 @@ export class Doppler {
     }
 
     /**
-     * Create an oracle account with a seed
+     * Create an oracle account from a keypair
      */
     async createOracleAccount<T>(
+        oracleKeypair: Keypair,
+        serializer: PayloadSerializer<T>
+    ): Promise<PublicKey> {
+        const oracleSize = 8 + serializer.size();
+        const lamports = await this.connection.getMinimumBalanceForRentExemption(
+            oracleSize
+        );
+
+        const createAccountInstruction = SystemProgram.createAccount({
+            fromPubkey: this.admin.publicKey,
+            newAccountPubkey: oracleKeypair.publicKey,
+            lamports,
+            space: oracleSize,
+            programId: DOPPLER_PROGRAM_ID,
+        });
+
+        const recentBlockhash = await this.connection.getLatestBlockhash();
+        const transaction = new Transaction({
+            feePayer: this.admin.publicKey,
+            recentBlockhash: recentBlockhash.blockhash,
+        });
+
+        transaction.add(createAccountInstruction);
+        transaction.sign(this.admin, oracleKeypair);
+
+        await sendAndConfirmTransaction(this.connection, transaction, [
+            this.admin,
+            oracleKeypair,
+        ]);
+
+        return oracleKeypair.publicKey;
+    }
+
+    /**
+     * Create an oracle account with a seed
+     */
+    async createOracleAccountWithSeed<T>(
         seed: string,
         serializer: PayloadSerializer<T>
     ): Promise<PublicKey> {
