@@ -3,6 +3,7 @@
 
 // PRicevBH6BaeaE8qmrxrwGBZ5hSZ9vjBNue5Ygot1ML
 use doppler::{nostd_panic_handler, prelude::*};
+use doppler_sdk::PriceData;
 
 nostd_panic_handler!();
 
@@ -13,5 +14,5 @@ nostd_panic_handler!();
 /// ADMIN keypair. It is as safe as you choose it to be.
 pub unsafe extern "C" fn entrypoint(input: *mut u8) {
     Admin::check(input);
-    Oracle::<[u8; 8]>::check_and_update(input);
+    Oracle::<PriceData>::check_and_update(input);
 }

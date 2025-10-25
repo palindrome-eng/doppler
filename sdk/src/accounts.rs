@@ -10,6 +10,14 @@ pub struct Oracle<T: Sized + Copy> {
     pub payload: T,
 }
 
+/// Price data payload with precision information
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PriceData {
+    pub price: u64,
+    pub precision: u8,
+}
+
 impl<T: Sized + Copy> Oracle<T> {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut data = Vec::with_capacity(core::mem::size_of::<Self>());

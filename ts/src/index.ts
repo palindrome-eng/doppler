@@ -33,6 +33,7 @@ const COMPUTE_BUDGET_UNIT_LIMIT_SIZE = 5;
 const COMPUTE_BUDGET_DATA_LIMIT_SIZE = 5;
 const COMPUTE_BUDGET_PROGRAM_SIZE = 22;
 const ORACLE_PROGRAM_SIZE = 36;
+const READ_CLOCK_CU = 11;
 
 /**
  * Generic Oracle data structure matching Rust implementation
@@ -40,6 +41,15 @@ const ORACLE_PROGRAM_SIZE = 36;
 export interface Oracle<T> {
     slot: bigint;
     payload: T;
+}
+
+/**
+ * Price data payload with precision information
+ * Matches the Rust PriceData struct
+ */
+export interface PriceData {
+    price: bigint;
+    precision: number;
 }
 
 /**
@@ -95,6 +105,32 @@ export function readPriceFromPayload(payload: Buffer): bigint {
 }
 
 /**
+ * Built-in serializer for PriceData payloads
+ * Structure: 8 bytes for price, 1 byte for precision (total 9 bytes)
+ */
+export class PriceDataSerializer implements PayloadSerializer<PriceData> {
+    serialize(payload: PriceData): Buffer {
+        const buf = Buffer.alloc(9);
+        buf.writeBigUInt64LE(payload.price, 0);
+        buf.writeUInt8(payload.precision, 8);
+        return buf;
+    }
+
+    deserialize(buffer: Buffer): PriceData {
+        if (buffer.length < 9) {
+            throw new Error('Buffer must be at least 9 bytes');
+        }
+        const price = buffer.readBigUInt64LE(0);
+        const precision = buffer.readUInt8(8);
+        return { price, precision };
+    }
+
+    size(): number {
+        return 9;
+    }
+}
+
+/**
  * Transaction builder for Doppler oracle updates
  */
 export class TransactionBuilder {
@@ -132,7 +168,7 @@ export class TransactionBuilder {
             ADMIN_VERIFICATION_CU +
             PAYLOAD_WRITE_CU +
             Math.floor(oracleSize / 4) +
-            500;
+            READ_CLOCK_CU;
 
         this.loadedAccountDataSize += oracleSize * 2;
         this.oracleUpdateInstructions.push(instruction);
