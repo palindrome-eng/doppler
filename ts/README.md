@@ -25,7 +25,7 @@ yarn add @reflectmoney/oracle.ts
 ### Initialize Doppler
 
 ```typescript
-import { Doppler, PriceFeedSerializer } from "@reflectmoney/oracle.ts";
+import { Doppler, U8Array8Serializer, createPricePayload } from "@reflectmoney/oracle.ts";
 import { Connection, Keypair } from "@solana/web3.js";
 
 const connection = new Connection("https://api.mainnet-beta.solana.com");
@@ -41,26 +41,39 @@ import { PublicKey } from "@solana/web3.js";
 
 const oraclePublicKey = new PublicKey("ORACLE_ADDRESS");
 
+// Create a price payload (8 bytes representing a u64 value)
+const pricePayload = createPricePayload(BigInt(1_000_000)); // 1 USDC
+
 await doppler.updateOracle(
     oraclePublicKey,
     { 
-        payload: { price: BigInt(Math.pow(10, 6)) },
-        sequence: BigInt(Date.now())
+        slot: BigInt(Date.now()),
+        payload: pricePayload,
     },
-    new PriceFeedSerializer(),
+    new U8Array8Serializer(),
 );
 ```
 
 ### Fetch Oracle Data
 
 ```typescript
+import { readPriceFromPayload } from "@reflectmoney/oracle.ts";
+
 const oracleData = await doppler.fetchOracle(
     oraclePublicKey,
-    new PriceFeedSerializer(),
+    new U8Array8Serializer(),
 );
 
-console.log(oracleData);
-// { sequence: 1, payload: { price: 1000000n } }
+if (oracleData) {
+    console.log("Slot:", oracleData.slot);
+    
+    // Extract price from the 8-byte payload
+    const price = readPriceFromPayload(oracleData.payload);
+    console.log("Price:", price);
+}
+// Output:
+// Slot: 1728662400000n
+// Price: 1000000n
 ```
 
 ### Create an Oracle Account
@@ -68,10 +81,10 @@ console.log(oracleData);
 ```typescript
 const oracleAccount = await doppler.createOracleAccount(
     "my-oracle-seed",
-    new PriceFeedSerializer(), 
+    new U8Array8Serializer(), 
     { 
-        payload: { price: BigInt(Math.pow(10, 6)) },
-        sequence: 0n
+        slot: 0n,
+        payload: createPricePayload(BigInt(1_000_000)),
     }
 );
 ```

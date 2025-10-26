@@ -7,6 +7,7 @@ import {
     SystemProgram,
     ComputeBudgetProgram,
     sendAndConfirmTransaction,
+    SYSVAR_CLOCK_PUBKEY,
 } from '@solana/web3.js';
 import { Buffer } from 'buffer';
 import { getSetLoadedAccountsDataSizeLimitInstruction } from "@solana-program/compute-budget";
@@ -32,13 +33,23 @@ const COMPUTE_BUDGET_UNIT_LIMIT_SIZE = 5;
 const COMPUTE_BUDGET_DATA_LIMIT_SIZE = 5;
 const COMPUTE_BUDGET_PROGRAM_SIZE = 22;
 const ORACLE_PROGRAM_SIZE = 36;
+const READ_CLOCK_CU = 11;
 
 /**
- * Generic Oracle data structure
+ * Generic Oracle data structure matching Rust implementation
  */
 export interface Oracle<T> {
-    sequence: bigint;
+    slot: bigint;
     payload: T;
+}
+
+/**
+ * Price data payload with precision information
+ * Matches the Rust PriceData struct
+ */
+export interface PriceData {
+    price: bigint;
+    precision: number;
 }
 
 /**
@@ -51,17 +62,22 @@ export interface PayloadSerializer<T> {
 }
 
 /**
- * Built-in serializer for u64 payloads (price feeds)
+ * Built-in serializer for [u8; 8] payloads (used for price feeds)
+ * The payload is simply 8 bytes representing data in little-endian format
  */
-export class U64Serializer implements PayloadSerializer<bigint> {
-    serialize(payload: bigint): Buffer {
-        const buf = Buffer.alloc(8);
-        buf.writeBigUInt64LE(payload);
-        return buf;
+export class U8Array8Serializer implements PayloadSerializer<Buffer> {
+    serialize(payload: Buffer): Buffer {
+        if (payload.length !== 8) {
+            throw new Error('Payload must be exactly 8 bytes');
+        }
+        return payload;
     }
 
-    deserialize(buffer: Buffer): bigint {
-        return buffer.readBigUInt64LE(0);
+    deserialize(buffer: Buffer): Buffer {
+        if (buffer.length < 8) {
+            throw new Error('Buffer must be at least 8 bytes');
+        }
+        return buffer.subarray(0, 8);
     }
 
     size(): number {
@@ -70,30 +86,47 @@ export class U64Serializer implements PayloadSerializer<bigint> {
 }
 
 /**
- * Price Feed structure matching the Rust implementation
+ * Helper function to create a [u8; 8] payload from a bigint price value
  */
-export interface PriceFeed {
-    price: bigint;
+export function createPricePayload(price: bigint): Buffer {
+    const buf = Buffer.alloc(8);
+    buf.writeBigUInt64LE(price);
+    return buf;
 }
 
 /**
- * Serializer for PriceFeed payloads
+ * Helper function to read a price value from a [u8; 8] payload
  */
-export class PriceFeedSerializer implements PayloadSerializer<PriceFeed> {
-    serialize(payload: PriceFeed): Buffer {
-        const buf = Buffer.alloc(8);
-        buf.writeBigUInt64LE(payload.price);
+export function readPriceFromPayload(payload: Buffer): bigint {
+    if (payload.length < 8) {
+        throw new Error('Payload must be at least 8 bytes');
+    }
+    return payload.readBigUInt64LE(0);
+}
+
+/**
+ * Built-in serializer for PriceData payloads
+ * Structure: 8 bytes for price, 1 byte for precision (total 9 bytes)
+ */
+export class PriceDataSerializer implements PayloadSerializer<PriceData> {
+    serialize(payload: PriceData): Buffer {
+        const buf = Buffer.alloc(9);
+        buf.writeBigUInt64LE(payload.price, 0);
+        buf.writeUInt8(payload.precision, 8);
         return buf;
     }
 
-    deserialize(buffer: Buffer): PriceFeed {
-        return {
-            price: buffer.readBigUInt64LE(0),
-        };
+    deserialize(buffer: Buffer): PriceData {
+        if (buffer.length < 9) {
+            throw new Error('Buffer must be at least 9 bytes');
+        }
+        const price = buffer.readBigUInt64LE(0);
+        const precision = buffer.readUInt8(8);
+        return { price, precision };
     }
 
     size(): number {
-        return 8;
+        return 9;
     }
 }
 
@@ -118,23 +151,24 @@ export class TransactionBuilder {
      */
     addOracleUpdate<T>(
         oraclePubkey: PublicKey,
-        oracle: Oracle<T>,
+        payload: T,
         serializer: PayloadSerializer<T>
     ): this {
         const instruction = this.createUpdateInstruction(
             oraclePubkey,
-            oracle,
+            payload,
             serializer
         );
 
         const payloadSize = serializer.size();
-        const oracleSize = 8 + payloadSize; // sequence + payload
+        const oracleSize = 8 + payloadSize; // slot + payload
 
         this.computeUnits +=
             SEQUENCE_CHECK_CU +
             ADMIN_VERIFICATION_CU +
             PAYLOAD_WRITE_CU +
-            Math.floor(oracleSize / 4);
+            Math.floor(oracleSize / 4) +
+            READ_CLOCK_CU;
 
         this.loadedAccountDataSize += oracleSize * 2;
         this.oracleUpdateInstructions.push(instruction);
@@ -202,10 +236,10 @@ export class TransactionBuilder {
 
     private createUpdateInstruction<T>(
         oraclePubkey: PublicKey,
-        oracle: Oracle<T>,
+        payload: T,
         serializer: PayloadSerializer<T>
     ): TransactionInstruction {
-        const data = this.serializeOracle(oracle, serializer);
+        const data = serializer.serialize(payload);
 
         return new TransactionInstruction({
             programId: DOPPLER_PROGRAM_ID,
@@ -220,21 +254,14 @@ export class TransactionBuilder {
                     isSigner: false,
                     isWritable: true,
                 },
+                {
+                    pubkey: SYSVAR_CLOCK_PUBKEY,
+                    isSigner: false,
+                    isWritable: false,
+                },
             ],
             data,
         });
-    }
-
-    private serializeOracle<T>(
-        oracle: Oracle<T>,
-        serializer: PayloadSerializer<T>
-    ): Buffer {
-        const sequenceBuffer = Buffer.alloc(8);
-        sequenceBuffer.writeBigUInt64LE(oracle.sequence);
-
-        const payloadBuffer = serializer.serialize(oracle.payload);
-
-        return Buffer.concat([sequenceBuffer, payloadBuffer]);
     }
 }
 
@@ -289,20 +316,56 @@ export class Doppler {
             );
         }
 
-        const sequence = data.readBigUInt64LE(0);
+        const slot = data.readBigUInt64LE(0);
         const payloadBuffer = data.subarray(8, 8 + serializer.size());
         const payload = serializer.deserialize(payloadBuffer);
 
-        return { sequence, payload };
+        return { slot, payload };
+    }
+
+    /**
+     * Create an oracle account from a keypair
+     */
+    async createOracleAccount<T>(
+        oracleKeypair: Keypair,
+        serializer: PayloadSerializer<T>
+    ): Promise<PublicKey> {
+        const oracleSize = 8 + serializer.size();
+        const lamports = await this.connection.getMinimumBalanceForRentExemption(
+            oracleSize
+        );
+
+        const createAccountInstruction = SystemProgram.createAccount({
+            fromPubkey: this.admin.publicKey,
+            newAccountPubkey: oracleKeypair.publicKey,
+            lamports,
+            space: oracleSize,
+            programId: DOPPLER_PROGRAM_ID,
+        });
+
+        const recentBlockhash = await this.connection.getLatestBlockhash();
+        const transaction = new Transaction({
+            feePayer: this.admin.publicKey,
+            recentBlockhash: recentBlockhash.blockhash,
+        });
+
+        transaction.add(createAccountInstruction);
+        transaction.sign(this.admin, oracleKeypair);
+
+        await sendAndConfirmTransaction(this.connection, transaction, [
+            this.admin,
+            oracleKeypair,
+        ]);
+
+        return oracleKeypair.publicKey;
     }
 
     /**
      * Create an oracle account with a seed
      */
-    async createOracleAccount<T>(
+    async createOracleAccountWithSeed<T>(
         seed: string,
-        serializer: PayloadSerializer<T>,
-        initialOracle: Oracle<T>
+        serializer: PayloadSerializer<T>
     ): Promise<PublicKey> {
         const oracleSize = 8 + serializer.size();
         const lamports = await this.connection.getMinimumBalanceForRentExemption(
@@ -344,7 +407,7 @@ export class Doppler {
      */
     async updateOracle<T>(
         oraclePubkey: PublicKey,
-        oracle: Oracle<T>,
+        payload: T,
         serializer: PayloadSerializer<T>,
         unitPrice?: bigint
     ): Promise<string> {
@@ -352,7 +415,7 @@ export class Doppler {
 
         let builder = this.createTransactionBuilder().addOracleUpdate(
             oraclePubkey,
-            oracle,
+            payload,
             serializer
         );
 
@@ -377,7 +440,7 @@ export class Doppler {
     async updateMultipleOracles<T>(
         updates: Array<{
             oraclePubkey: PublicKey;
-            oracle: Oracle<T>;
+            payload: T;
             serializer: PayloadSerializer<T>;
         }>,
         unitPrice?: bigint
@@ -389,7 +452,7 @@ export class Doppler {
         for (const update of updates) {
             builder = builder.addOracleUpdate(
                 update.oraclePubkey,
-                update.oracle,
+                update.payload,
                 update.serializer
             );
         }

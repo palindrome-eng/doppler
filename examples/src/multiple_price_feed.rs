@@ -1,5 +1,4 @@
-use doppler_program::PriceFeed;
-use doppler_sdk::{transaction::Builder, Oracle};
+use doppler_sdk::{transaction::Builder, Oracle, PriceData};
 use solana_client::rpc_client::RpcClient;
 use solana_keypair::Keypair;
 use solana_signer::EncodableKey as _;
@@ -23,24 +22,27 @@ fn main() {
     // Define oracle account public key (replace with actual oracle account)
 
     let sol_usdc_oracle_data =
-        fetch::oracle_account::<PriceFeed>(&client, &constants::SOL_USDC_ORACLE)
+        fetch::oracle_account::<PriceData>(&client, &constants::SOL_USDC_ORACLE)
             .expect("failed to fetch oracle account");
     let sol_usdt_oracle_data =
-        fetch::oracle_account::<PriceFeed>(&client, &constants::SOL_USDT_ORACLE)
+        fetch::oracle_account::<PriceData>(&client, &constants::SOL_USDT_ORACLE)
             .expect("failed to fetch oracle account");
     let bonk_sol_oracle_data =
-        fetch::oracle_account::<PriceFeed>(&client, &constants::BONK_SOL_ORACLE)
+        fetch::oracle_account::<PriceData>(&client, &constants::BONK_SOL_ORACLE)
             .expect("failed to fetch oracle account");
 
     // Create the new price feed data
-    let new_sol_usdc_price_feed = PriceFeed {
+    let new_sol_usdc_price_feed = PriceData {
         price: sol_usdc_oracle_data.payload.price + 10,
+        precision: sol_usdc_oracle_data.payload.precision,
     };
-    let new_sol_usdt_price_feed = PriceFeed {
+    let new_sol_usdt_price_feed = PriceData {
         price: sol_usdt_oracle_data.payload.price + 10,
+        precision: sol_usdt_oracle_data.payload.precision,
     };
-    let new_bonk_sol_price_feed = PriceFeed {
+    let new_bonk_sol_price_feed = PriceData {
         price: bonk_sol_oracle_data.payload.price + 10,
+        precision: bonk_sol_oracle_data.payload.precision,
     };
 
     // Get a recent blockhash
@@ -72,7 +74,7 @@ fn main() {
         tx_builder = tx_builder.add_oracle_update(
             oracle_pubkey,
             Oracle {
-                sequence: oracle_data.sequence + 1, // New sequence number, must be greater than current
+                slot: oracle_data.slot + 1, // New sequence number, must be greater than current
                 payload: new_price_feed,
             },
         );
@@ -90,25 +92,25 @@ fn main() {
     println!("Transaction successful with signature: {signature:?}");
 
     let sol_usdc_oracle_data =
-        fetch::oracle_account::<PriceFeed>(&client, &constants::SOL_USDC_ORACLE)
+        fetch::oracle_account::<PriceData>(&client, &constants::SOL_USDC_ORACLE)
             .expect("failed to fetch sol-usdc oracle account");
     let sol_usdt_oracle_data =
-        fetch::oracle_account::<PriceFeed>(&client, &constants::SOL_USDT_ORACLE)
+        fetch::oracle_account::<PriceData>(&client, &constants::SOL_USDT_ORACLE)
             .expect("failed to fetch sol-usdt oracle account");
     let bonk_sol_oracle_data =
-        fetch::oracle_account::<PriceFeed>(&client, &constants::BONK_SOL_ORACLE)
+        fetch::oracle_account::<PriceData>(&client, &constants::BONK_SOL_ORACLE)
             .expect("failed to fetch bonk-sol oracle account");
 
     println!(
-        "SOL/USDC Price feed : seq : {}, price : {}",
-        sol_usdc_oracle_data.sequence, sol_usdc_oracle_data.payload.price
+        "SOL/USDC Price feed : seq : {}, price : {}, precision : {}",
+        sol_usdc_oracle_data.slot, sol_usdc_oracle_data.payload.price, sol_usdc_oracle_data.payload.precision
     );
     println!(
-        "SOL/USDT Price feed : seq : {}, price : {}",
-        sol_usdt_oracle_data.sequence, sol_usdt_oracle_data.payload.price
+            "SOL/USDT Price feed : seq : {}, price : {}, precision : {}",
+            sol_usdt_oracle_data.slot, sol_usdt_oracle_data.payload.price, sol_usdt_oracle_data.payload.precision
     );
     println!(
-        "Bonk/SOL Price feed : seq : {}, price : {}",
-        bonk_sol_oracle_data.sequence, bonk_sol_oracle_data.payload.price
+        "Bonk/SOL Price feed : seq : {}, price : {}, precision : {}",
+        bonk_sol_oracle_data.slot, bonk_sol_oracle_data.payload.price, bonk_sol_oracle_data.payload.precision
     );
 }

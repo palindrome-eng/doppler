@@ -18,6 +18,7 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 
 [dependencies]
 doppler = { workspace = true }
+doppler-sdk = { workspace = true }
 
 [dev-dependencies]
 doppler-sdk = { workspace = true }

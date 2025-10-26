@@ -1,6 +1,7 @@
 #![cfg_attr(target_os = "solana", feature(asm_experimental_arch))]
 #![cfg_attr(not(feature = "std"), no_std)]
 
+mod clock;
 mod admin;
 mod oracle;
 pub mod panic_handler;
@@ -33,6 +34,7 @@ where
 
 pub mod prelude {
     pub use crate::admin::{Admin, ADMIN};
+    pub use crate::clock::Clock;
     pub use crate::oracle::Oracle;
     #[cfg(not(feature = "std"))]
     pub use crate::panic_handler::*;

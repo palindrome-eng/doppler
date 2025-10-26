@@ -1,0 +1,31 @@
+{
+  "name": "@reflectmoney/doppler-cli",
+  "version": "1.0.0",
+  "description": "CLI for interacting with Doppler oracle program",
+  "type": "module",
+  "main": "dist/cli.js",
+  "scripts": {
+    "cli": "tsx src/cli.ts",
+    "build": "tsc",
+    "start": "node dist/cli.js"
+  },
+  "keywords": [
+    "doppler",
+    "oracle",
+    "solana",
+    "cli"
+  ],
+  "author": "Palindrome Engineering",
+  "license": "MIT",
+  "dependencies": {
+    "@reflectmoney/oracle.ts": "^2.2.0",
+    "@solana/web3.js": "^1.98.4",
+    "commander": "^14.0.1",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.7.2",
+    "tsx": "^4.20.6",
+    "typescript": "^5.7.2"
+  }
+}

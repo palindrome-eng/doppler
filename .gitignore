@@ -12,6 +12,7 @@ recovered.json
 /ts/yarn.lock
 yarn.lock
 /ts/tests
+oracle.json
 
 # Configuration files
 .DS_Store

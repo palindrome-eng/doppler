@@ -4,6 +4,7 @@
     "main": "index.js",
     "license": "MIT",
     "scripts": {
+        "cli": "bun ./cli/src/cli.ts",
         "deploy:mainnet": "npx dotenv -e .env -- sh -c 'solana program deploy --url $MAINNET_CLUSTER_URL --program-id $PROGRAM_KEYPAIR_LOCATION --keypair $DEPLOYER_KEYPAIR_LOCATION ./target/deploy/doppler_program.so'",
         "deploy:recover": "solana-keygen recover --outfile ./recovered.json --force",
         "deploy:resume": "npx dotenv -e .env -- sh -c 'solana program deploy --url $MAINNET_CLUSTER_URL --keypair $DEPLOYER_KEYPAIR_LOCATION --buffer ./recovered.json --program-id $PROGRAM_KEYPAIR_LOCATION ./target/deploy/doppler_program.so'"

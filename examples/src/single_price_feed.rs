@@ -1,5 +1,4 @@
-use doppler_program::PriceFeed;
-use doppler_sdk::{transaction::Builder, Oracle};
+use doppler_sdk::{transaction::Builder, Oracle, PriceData};
 use solana_client::rpc_client::RpcClient;
 use solana_keypair::Keypair;
 use solana_signer::EncodableKey as _;
@@ -21,12 +20,13 @@ fn main() {
     let admin = Keypair::read_from_file(keypair_path).expect("keypair not found at that path");
 
     // Define oracle account public key (replace with actual oracle account)
-    let oracle_data = fetch::oracle_account::<PriceFeed>(&client, &constants::SOL_USDC_ORACLE)
+    let oracle_data = fetch::oracle_account::<PriceData>(&client, &constants::SOL_USDC_ORACLE)
         .expect("failed to fetch oracle account");
 
     // Create the new price feed data
-    let new_price_feed = PriceFeed {
+    let new_price_feed = PriceData {
         price: oracle_data.payload.price + 10,
+        precision: oracle_data.payload.precision,
     };
 
     // Get a recent blockhash
@@ -39,7 +39,7 @@ fn main() {
         .add_oracle_update(
             constants::SOL_USDC_ORACLE,
             Oracle {
-                sequence: oracle_data.sequence + 1, // New sequence number, must be greater than current
+                slot: oracle_data.slot + 1, // New sequence number, must be greater than current
                 payload: new_price_feed,
             },
         )
@@ -55,11 +55,11 @@ fn main() {
 
     println!("Transaction successful with signature: {signature:?}");
 
-    let oracle_data = fetch::oracle_account::<PriceFeed>(&client, &constants::SOL_USDC_ORACLE)
+    let oracle_data = fetch::oracle_account::<PriceData>(&client, &constants::SOL_USDC_ORACLE)
         .expect("failed to fetch oracle account");
 
     println!(
-        "Price feed : seq : {}, price : {}",
-        oracle_data.sequence, oracle_data.payload.price
+        "Price feed : seq : {}, price : {}, precision : {}",
+        oracle_data.slot, oracle_data.payload.price, oracle_data.payload.precision
     );
 }
